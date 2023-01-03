@@ -24,9 +24,6 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -105,16 +102,20 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the global thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
+
+	/* Init the global tick */
+	global_tick = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -305,6 +306,26 @@ thread_yield (void) {
 	if (curr != idle_thread)
 		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
+	intr_set_level (old_level);
+}
+
+void
+thread_sleep (int64_t ticks){
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	ASSERT (!intr_context ());
+
+	old_level = intr_disable ();
+	if (curr != idle_thread){
+		/*Update global tick*/
+		if(ticks > global_tick)
+			global_tick = ticks;
+		/*Save local tick*/
+		curr->wakeup_tick = ticks; 
+		list_push_back (&sleep_list, &curr->elem);
+		do_schedule (THREAD_BLOCKED);
+	}
 	intr_set_level (old_level);
 }
 
