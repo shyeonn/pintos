@@ -92,9 +92,11 @@ void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
+	//printf("***it's going to sleep\n");
+
 	ASSERT (intr_get_level () == INTR_ON);
 	if (timer_elapsed (start) < ticks)
-		therad_sleep(ticks); //it is global tick
+		thread_sleep(start + ticks); 
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -124,25 +126,10 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
+
 	ticks++;
 	thread_tick ();
-
-	struct list_elem first_thread = *list_begin(&sleep_list);
-
-	struct list_elem *e;
-	struct thread *sleep_thread;
-
-	for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
- 	e = list_next (e)) {
- 	sleep_thread = list_entry (e, struct thread, elem);
-	if(sleep_thread->wakeup_tick > global_tick){
-		*list_remove(e);
-		list_push_back (&sleep_list, &sleep_thread->elem);
-		break;
-	}
-  	}
-
-	global_tick++;
+	thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

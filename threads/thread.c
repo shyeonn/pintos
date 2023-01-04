@@ -24,6 +24,15 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+/* List of processes in THREAD_READY state, that is, processes
+   that are ready to run but not actually running. */
+static struct list ready_list;
+
+/* List of processes that go to sleep for sleep/wakeup-based alarm clock*/
+static struct list sleep_list;
+
+/* Global tick. */
+static int64_t global_tick;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -114,7 +123,7 @@ thread_init (void) {
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
 
-	/* Init the global tick */
+	/* Initiate global tick */
 	global_tick = 0;
 }
 
@@ -327,6 +336,36 @@ thread_sleep (int64_t ticks){
 		do_schedule (THREAD_BLOCKED);
 	}
 	intr_set_level (old_level);
+}
+
+void
+thread_awake(int64_t ticks){
+
+	if(ticks > global_tick){
+		struct list_elem *e;
+		struct thread *sleep_thread;
+
+		e = list_begin (&sleep_list);
+
+
+		for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
+		e = list_next (e)) {
+		sleep_thread = list_entry (e, struct thread, elem);
+		//printf("thread name : %s\n", sleep_thread->name);
+		//printf("tick : %d\n", sleep_thread->wakeup_tick);
+		//printf("ticks : %d\n", ticks);
+		if(sleep_thread->wakeup_tick < ticks){
+			
+			*list_remove(e);
+			list_push_back (&ready_list, &sleep_thread->elem);
+			//printf("***find it\n");
+			break;
+		}
+		}
+	}
+
+
+
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */

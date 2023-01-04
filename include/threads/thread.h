@@ -144,13 +144,7 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
-
-/* List of processes that go to sleep for sleep/wakeup-based alarm clock*/
-static struct list sleep_list;
-
-int64_t global_tick;
+void thread_sleep (int64_t ticks);
+void thread_awake (int64_t ticks);
 
 #endif /* threads/thread.h */
