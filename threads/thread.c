@@ -15,6 +15,8 @@
 #include "userprog/process.h"
 #endif
 
+#define IDLE_TID 2
+#define MAIN_TID 1
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -217,6 +219,15 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+	if(t->priority > thread_get_priority()){
+		if(list_entry(list_front(&ready_list), struct thread, elem)->status == THREAD_READY)
+		do_schedule(THREAD_READY);
+	}
+	intr_set_level (old_level);
+
 	return tid;
 }
 
@@ -252,6 +263,7 @@ thread_unblock (struct thread *t) {
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_insert_ordered (&ready_list, &t->elem, priority_gre_function, NULL);
 	t->status = THREAD_READY;
+
 	intr_set_level (old_level);
 }
 
@@ -312,8 +324,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	//printf("yield\n");
+	if (curr != idle_thread){
+		list_
+		list_insert_ordered (&ready_list, &curr->elem, priority_gre_function, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -357,6 +372,16 @@ thread_awake(int64_t ticks){
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	if(PRI_DEFAULT > new_priority){
+		thread_yield();
+	}
+	if(!list_empty(&ready_list)){
+		if(list_entry(list_front(&ready_list), struct thread, elem)->priority > new_priority){
+			printf("go to tield");
+			thread_yield();
+		}
+	}
 }
 
 /* Returns the current thread's priority. */
