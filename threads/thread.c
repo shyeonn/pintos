@@ -124,9 +124,9 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();
 
 	/* Initiate global tick */
-	global_tick = 0;
+	global_tick = 0x7FFFFFFFFFFFFFFF;
 }
-
+;
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void
@@ -250,7 +250,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, priority_gre_function, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -328,11 +328,11 @@ thread_sleep (int64_t ticks){
 	old_level = intr_disable ();
 	if (curr != idle_thread){
 		/*Update global tick*/
-		if(ticks > global_tick)
+		if(ticks < global_tick)
 			global_tick = ticks;
 		/*Save local tick*/
 		curr->wakeup_tick = ticks; 
-		list_push_back (&sleep_list, &curr->elem);
+		list_insert_ordered (&sleep_list, &curr->elem, wakeup_tick_less_function, NULL);
 		do_schedule (THREAD_BLOCKED);
 	}
 	intr_set_level (old_level);
@@ -340,32 +340,17 @@ thread_sleep (int64_t ticks){
 
 void
 thread_awake(int64_t ticks){
-
-	if(ticks > global_tick){
-		struct list_elem *e;
+	while(ticks >= global_tick){
 		struct thread *sleep_thread;
 
-		e = list_begin (&sleep_list);
-
-
-		for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
-		e = list_next (e)) {
-		sleep_thread = list_entry (e, struct thread, elem);
-		//printf("thread name : %s\n", sleep_thread->name);
-		//printf("tick : %d\n", sleep_thread->wakeup_tick);
-		//printf("ticks : %d\n", ticks);
-		if(sleep_thread->wakeup_tick < ticks){
-			
-			*list_remove(e);
-			list_push_back (&ready_list, &sleep_thread->elem);
-			//printf("***find it\n");
-			break;
-		}
+		if(!list_empty(&sleep_list)) {
+			sleep_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+			global_tick = list_entry(list_begin(&sleep_list), 
+									  struct thread, elem)->wakeup_tick;
+			list_insert_ordered (&ready_list, &sleep_thread->elem, priority_gre_function, NULL);
+			sleep_thread->status = THREAD_READY;
 		}
 	}
-
-
-
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -648,3 +633,27 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+/* list_less_function for ready_list_insert_ordered.
+Inserting thread in order by small ticks values. */
+bool wakeup_tick_less_function(const struct list_elem* a, const struct list_elem* b,
+		void *aux UNUSED)
+{
+	struct thread* thread_a = list_entry(a,struct thread,elem);
+	struct thread* thread_b = list_entry(b,struct thread,elem);
+
+	return thread_a->wakeup_tick < thread_b->wakeup_tick;
+}
+
+
+/* list_less_function for ready_list_insert_ordered.
+Inserting thread in order by larger priority values. */
+bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
+		void *aux UNUSED)
+{
+	struct thread* thread_a = list_entry(a,struct thread,elem);
+	struct thread* thread_b = list_entry(b,struct thread,elem);
+
+	return thread_a->priority > thread_b->priority;
+}
+
