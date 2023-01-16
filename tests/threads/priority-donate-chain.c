@@ -78,6 +78,10 @@ test_priority_donate_chain (void)
     }
 
   lock_release (&locks[0]);
+  for(int i = 0; i< 10000000; i++){
+	i++;
+	i--;
+  }
   msg ("%s finishing with priority %d.", thread_name (),
                                          thread_get_priority ());
 }
@@ -101,6 +105,10 @@ donor_thread_func (void *locks_)
   if (locks->first)
     lock_release (locks->first);
 
+  for(int i = 0 ; i < 10000000; i++) {
+	i++;
+	i--;
+  }
   msg ("%s finishing with priority %d.", thread_name (),
                                          thread_get_priority ());
 }

@@ -42,6 +42,10 @@ test_mlfqs_block (void)
 
   msg ("Main thread releasing lock.");
   lock_release (&lock);
+  for(int i = 0 ; i < 10000000 ; i++) {
+	  i ++;
+	  i --;
+  }
 
   msg ("Block thread should have already acquired lock.");
 }

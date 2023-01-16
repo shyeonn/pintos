@@ -39,6 +39,10 @@ test_priority_condvar (void)
       msg ("Signaling...");
       cond_signal (&condition, &lock);
       lock_release (&lock);
+	  for(int i = 0; i < 10000000 ; i++){
+		  i++;
+		  i--;
+	  }
     }
 }
 

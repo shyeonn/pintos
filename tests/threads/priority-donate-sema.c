@@ -43,6 +43,10 @@ test_priority_donate_sema (void)
   thread_create ("med", PRI_DEFAULT + 3, m_thread_func, &ls);
   thread_create ("high", PRI_DEFAULT + 5, h_thread_func, &ls);
   sema_up (&ls.sema);
+  for(int i = 0; i <100000000; i++){
+	  i++;
+	  i--;
+  }
   msg ("Main thread finished.");
 }
 
@@ -56,6 +60,10 @@ l_thread_func (void *ls_)
   sema_down (&ls->sema);
   msg ("Thread L downed semaphore.");
   lock_release (&ls->lock);
+  for(int i = 0; i <100000000; i++){
+	  i++;
+	  i--;
+  }
   msg ("Thread L finished.");
 }
 

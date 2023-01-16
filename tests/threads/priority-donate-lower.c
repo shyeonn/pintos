@@ -34,6 +34,10 @@ test_priority_donate_lower (void)
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 10, thread_get_priority ());
   lock_release (&lock);
+  for(int i = 0; i < 10000000; i++){
+	  i++;
+	  i--;
+  }
   msg ("acquire must already have finished.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT - 10, thread_get_priority ());
