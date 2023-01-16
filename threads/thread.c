@@ -224,7 +224,7 @@ thread_create (const char *name, int priority,
 	old_level = intr_disable ();
 	if(t->priority > thread_get_priority()){
 		if(list_entry(list_front(&ready_list), struct thread, elem)->status == THREAD_READY)
-		do_schedule(THREAD_READY);
+		thread_yield();
 	}
 	intr_set_level (old_level);
 
@@ -324,9 +324,7 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	//printf("yield\n");
 	if (curr != idle_thread){
-		list_
 		list_insert_ordered (&ready_list, &curr->elem, priority_gre_function, NULL);
 	}
 	do_schedule (THREAD_READY);
@@ -373,12 +371,8 @@ void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 
-	if(PRI_DEFAULT > new_priority){
-		thread_yield();
-	}
 	if(!list_empty(&ready_list)){
 		if(list_entry(list_front(&ready_list), struct thread, elem)->priority > new_priority){
-			printf("go to tield");
 			thread_yield();
 		}
 	}
@@ -479,6 +473,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	t->origin_priority = t-> priority;
+	list_init(&t->donations);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -681,4 +679,9 @@ bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
 
 	return thread_a->priority > thread_b->priority;
 }
-
+/*
+struct thread
+elem_to_thread(struct list_elem l_elem) {
+	return list_entry (l_elem, struct thread, elem);
+}
+*/

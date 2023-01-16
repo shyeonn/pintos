@@ -95,6 +95,10 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list donations;				/* For multiple donation */
+	struct list_elem d_elem;
+	struct lock *wait_on_lock;        /* For nested donation */
+	int origin_priority;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -152,6 +156,6 @@ bool wakeup_tick_less_function(const struct list_elem* a, const struct list_elem
 bool priority_gre_function(const struct list_elem* a, const struct list_elem* b, 
 							   void *aux UNUSED);
 
-
+//struct thread elem_to_thread(struct list_elem);
 
 #endif /* threads/thread.h */
