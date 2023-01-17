@@ -360,7 +360,8 @@ thread_awake(int64_t ticks){
 			sleep_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
 			global_tick = list_entry(list_begin(&sleep_list), 
 									  struct thread, elem)->wakeup_tick;
-			list_insert_ordered (&ready_list, &sleep_thread->elem, priority_gre_function, NULL);
+			list_insert_ordered (&ready_list, &sleep_thread->elem, 
+					priority_gre_function, NULL);
 			sleep_thread->status = THREAD_READY;
 		}
 	}
@@ -369,10 +370,15 @@ thread_awake(int64_t ticks){
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *t = thread_current();
+
+	if(t->origin_priority == t->priority)
+		t->priority = new_priority;
+	t->origin_priority = new_priority;
 
 	if(!list_empty(&ready_list)){
-		if(list_entry(list_front(&ready_list), struct thread, elem)->priority > new_priority){
+		if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
+				> new_priority){
 			thread_yield();
 		}
 	}

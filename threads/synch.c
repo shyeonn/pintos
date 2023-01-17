@@ -35,6 +35,9 @@
 int find_max_priority(struct list *list);
 void remove_released_thread(struct lock *lock);
 void nested_donation(struct lock *lock, int priority);
+
+
+bool priority_gre_sema(const struct list_elem* , const struct list_elem* , void *aux);
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -305,6 +308,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 struct semaphore_elem {
 	struct list_elem elem;              /* List element. */
 	struct semaphore semaphore;         /* This semaphore. */
+	int priority;
 };
 
 /* Initializes condition variable COND.  A condition variable
@@ -347,7 +351,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_insert_ordered (&cond->waiters, &waiter.elem, priority_gre_function, NULL);
+	waiter.priority = thread_get_priority();
+	list_insert_ordered (&cond->waiters, &waiter.elem, priority_gre_sema, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -367,9 +372,11 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)) {
+		//list_sort(&cond->waiters, priority_gre_function, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -386,4 +393,15 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
 }
+
+bool priority_gre_sema(const struct list_elem* a, const struct list_elem* b,
+				void *aux UNUSED)
+{
+	int priority_a = list_entry(a,struct semaphore_elem,elem)->priority;
+	int priority_b = list_entry(b,struct semaphore_elem,elem)->priority;
+
+	return priority_a > priority_b;
+}
+
+
 
