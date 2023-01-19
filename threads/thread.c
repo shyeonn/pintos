@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/arithmetic.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -61,6 +62,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -372,14 +375,19 @@ void
 thread_set_priority (int new_priority) {
 	struct thread *t = thread_current();
 
-	if(t->origin_priority == t->priority)
+	if(thread_mlfqs == true){
 		t->priority = new_priority;
-	t->origin_priority = new_priority;
+	}
+	else{
+		if(t->origin_priority == t->priority)
+			t->priority = new_priority;
+		t->origin_priority = new_priority;
 
-	if(!list_empty(&ready_list)){
-		if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
-				> new_priority){
-			thread_yield();
+		if(!list_empty(&ready_list)){
+			if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
+					> new_priority){
+				thread_yield();
+			}
 		}
 	}
 }
@@ -392,31 +400,57 @@ thread_get_priority (void) {
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) {
-	/* TODO: Your implementation goes here */
+thread_set_nice (int nice) {
+	thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	return f2i(mul_x_y(i2f(100), load_avg));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+	int recent_cpu = thread_current()->recent_cpu;
+
+	return f2i(mul_x_y(i2f(100), recent_cpu));
 }
 
+void
+calculate_load_avg(void){
+	int ready_threads = list_size(&ready_list) + 1;
+
+	/* load_avg = (59/60) * load_avg + (1/60) * ready_threads */
+	load_avg = mul_x_y(div_x_y(i2f(59), i2f(60)), load_avg) +
+						div_x_y(i2f(1), i2f(60)) * ready_threads;
+}
+
+void
+calculate_recent_cpu (void) {
+	int nice = thread_current()->nice;
+	int recent_cpu = thread_current()->recent_cpu;
+
+	recent_cpu = add_x_n(mul_x_y(div_x_y((load_avg * 2), (add_x_n(load_avg, 1) * 2)),
+				recent_cpu), nice);
+	thread_current()->recent_cpu = recent_cpu;
+}
+
+void
+recalculate_priority(void) {
+	struct thread *t = thread_current();
+	int recent_cpu = t->recent_cpu;
+	int nice = t->recent_cpu;
+
+	t->priority = PRI_MAX - f2i(recent_cpu / 4) - (nice * 2);
+}
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -483,6 +517,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->origin_priority = t-> priority;
 	list_init(&t->donations);
 
+	t->nice = 0;
+	t->recent_cpu = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -685,9 +721,3 @@ bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
 
 	return thread_a->priority > thread_b->priority;
 }
-/*
-struct thread
-elem_to_thread(struct list_elem l_elem) {
-	return list_entry (l_elem, struct thread, elem);
-}
-*/

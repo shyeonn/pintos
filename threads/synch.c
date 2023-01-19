@@ -208,11 +208,13 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	if(lock->holder != NULL) {
-		thread_current()->wait_on_lock = lock;
-		if(lock->holder->priority < cur_priority) 
-			nested_donation(lock, cur_priority);
-		list_push_back(&lock->holder->donations, &thread_current()->d_elem);
+	if(thread_mlfqs == false){
+		if(lock->holder != NULL) {
+			thread_current()->wait_on_lock = lock;
+			if(lock->holder->priority < cur_priority) 
+				nested_donation(lock, cur_priority);
+			list_push_back(&lock->holder->donations, &thread_current()->d_elem);
+		}
 	}
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
@@ -246,23 +248,26 @@ lock_try_acquire (struct lock *lock) {
    handler. */
 void
 lock_release (struct lock *lock) {
-	int holder_priority;
-	int donor_priority;
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	holder_priority = lock->holder->origin_priority;
-	if(!list_empty(&lock->holder->donations)){
-		remove_released_thread(lock);
-		donor_priority = find_max_priority(&lock->holder->donations);
-		if(donor_priority > holder_priority)
-			lock->holder->priority = donor_priority;
-		else
-			lock->holder->priority = holder_priority;
+	if(thread_mlfqs == false){
+		int holder_priority;
+		int donor_priority;
+		holder_priority = lock->holder->origin_priority;
+		if(!list_empty(&lock->holder->donations)){
+			remove_released_thread(lock);
+			donor_priority = find_max_priority(&lock->holder->donations);
+			if(donor_priority > holder_priority)
+				lock->holder->priority = donor_priority;
+			else
+				lock->holder->priority = holder_priority;
+		}
+		if(lock->holder->wait_on_lock != NULL){
+			nested_donation(lock->holder->wait_on_lock, lock->holder->priority);
+		}
 	}
-	if(lock->holder->wait_on_lock != NULL){
-		nested_donation(lock->holder->wait_on_lock, lock->holder->priority);
-	}
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }

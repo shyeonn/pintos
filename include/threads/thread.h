@@ -92,6 +92,9 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wakeup_tick;				/* tick till wake up. */
+	/* For advanced scheduler */
+	int nice;
+	int recent_cpu;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -118,6 +121,9 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+extern int load_avg;
+
 
 void thread_init (void);
 void thread_start (void);
@@ -155,7 +161,10 @@ bool wakeup_tick_less_function(const struct list_elem* a, const struct list_elem
 							   void *aux UNUSED);
 bool priority_gre_function(const struct list_elem* a, const struct list_elem* b, 
 							   void *aux UNUSED);
+void calculate_load_avg (void);
+void calculate_recent_cpu (void);
+void recalculate_priority (void);
 
-//struct thread elem_to_thread(struct list_elem);
+
 
 #endif /* threads/thread.h */
