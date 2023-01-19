@@ -358,11 +358,13 @@ void
 thread_awake(int64_t ticks){
 	while(ticks >= global_tick){
 		struct thread *sleep_thread;
-
 		if(!list_empty(&sleep_list)) {
 			sleep_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-			global_tick = list_entry(list_begin(&sleep_list), 
-									  struct thread, elem)->wakeup_tick;
+			if(!list_empty(&sleep_list))
+				global_tick = list_entry(list_begin(&sleep_list), 
+										  struct thread, elem)->wakeup_tick;
+			else
+				global_tick = 0x7FFFFFFFFFFFFFFF; 
 			list_insert_ordered (&ready_list, &sleep_thread->elem, 
 					priority_gre_function, NULL);
 			sleep_thread->status = THREAD_READY;
@@ -375,21 +377,22 @@ void
 thread_set_priority (int new_priority) {
 	struct thread *t = thread_current();
 
-	if(thread_mlfqs == true){
-		t->priority = new_priority;
-	}
-	else{
+	if(thread_mlfqs == false){
 		if(t->origin_priority == t->priority)
 			t->priority = new_priority;
-		t->origin_priority = new_priority;
+		}
+		else{
+			if(t->origin_priority == t->priority)
+				t->priority = new_priority;
+			t->origin_priority = new_priority;
 
-		if(!list_empty(&ready_list)){
-			if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
-					> new_priority){
-				thread_yield();
+			if(!list_empty(&ready_list)){
+				if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
+						> new_priority){
+					thread_yield();
+				}
 			}
 		}
-	}
 }
 
 /* Returns the current thread's priority. */
