@@ -377,22 +377,20 @@ void
 thread_set_priority (int new_priority) {
 	struct thread *t = thread_current();
 
-	if(thread_mlfqs == false){
+	if(thread_mlfqs == true){
+		t->priority = new_priority;
+	}
+	else{
 		if(t->origin_priority == t->priority)
 			t->priority = new_priority;
-		}
-		else{
-			if(t->origin_priority == t->priority)
-				t->priority = new_priority;
-			t->origin_priority = new_priority;
-
-			if(!list_empty(&ready_list)){
-				if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
-						> new_priority){
-					thread_yield();
-				}
+		t->origin_priority = new_priority;
+		if(!list_empty(&ready_list)){
+			if(list_entry(list_front(&ready_list), struct thread, elem)->priority 
+					> new_priority){
+				thread_yield();
 			}
 		}
+	}
 }
 
 /* Returns the current thread's priority. */
