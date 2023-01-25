@@ -34,9 +34,6 @@ static struct list ready_list;
 /* List of processes that go to sleep for sleep/wakeup-based alarm clock*/
 static struct list sleep_list;
 
-/* Global tick. */
-static int64_t global_tick;
-
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -62,6 +59,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+int64_t global_tick;
 
 int load_avg;
 
@@ -355,20 +354,20 @@ thread_sleep (int64_t ticks){
 }
 
 void
-thread_awake(int64_t ticks){
-	while(ticks >= global_tick){
-		struct thread *sleep_thread;
-		if(!list_empty(&sleep_list)) {
-			sleep_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-			if(!list_empty(&sleep_list))
-				global_tick = list_entry(list_begin(&sleep_list), 
-										  struct thread, elem)->wakeup_tick;
-			else
-				global_tick = 0x7FFFFFFFFFFFFFFF; 
-			list_insert_ordered (&ready_list, &sleep_thread->elem, 
-					priority_gre_function, NULL);
-			sleep_thread->status = THREAD_READY;
-		}
+thread_awake(void){
+	struct thread *sleep_thread;
+
+	if(!list_empty(&sleep_list)) {
+		sleep_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+
+		if(!list_empty(&sleep_list))
+			global_tick = list_entry(list_begin(&sleep_list), 
+									  struct thread, elem)->wakeup_tick;
+		else
+			global_tick = 0x7FFFFFFFFFFFFFFF; 
+		list_insert_ordered (&ready_list, &sleep_thread->elem, 
+				priority_gre_function, NULL);
+		sleep_thread->status = THREAD_READY;
 	}
 }
 
@@ -427,30 +426,33 @@ thread_get_recent_cpu (void) {
 
 void
 calculate_load_avg(void){
-	int ready_threads = list_size(&ready_list) + 1;
+	int ready_threads;
+
+	if(thread_current() == idle_thread)
+		ready_threads = list_size(&ready_list);
+	else
+		ready_threads = list_size(&ready_list) + 1;
 
 	/* load_avg = (59/60) * load_avg + (1/60) * ready_threads */
-	load_avg = mul_x_y(div_x_y(i2f(59), i2f(60)), load_avg) +
-						div_x_y(i2f(1), i2f(60)) * ready_threads;
+	load_avg = mul_x_y((i2f(59) / 60), load_avg) +
+						((i2f(1) / 60) * ready_threads);
 }
 
 void
 calculate_recent_cpu (void) {
-	int nice = thread_current()->nice;
-	int recent_cpu = thread_current()->recent_cpu;
-
-	recent_cpu = add_x_n(mul_x_y(div_x_y((load_avg * 2), (add_x_n(load_avg, 1) * 2)),
-				recent_cpu), nice);
-	thread_current()->recent_cpu = recent_cpu;
+	int *r = &thread_current()->recent_cpu;
+//	printf("load_avg : %d\n", f2i(load_avg*100));
+//	int decay = div_x_y((load_avg * 2), add_x_n((load_avg * 2), 1));
+//	printf("decay : %d\n", f2i(decay*100));
+	
+	*r = add_x_n(mul_x_y(div_x_y((load_avg * 2), add_x_n((load_avg * 2), 1)), *r), thread_current()->nice);
 }
 
 void
 recalculate_priority(void) {
 	struct thread *t = thread_current();
-	int recent_cpu = t->recent_cpu;
-	int nice = t->recent_cpu;
 
-	t->priority = PRI_MAX - f2i(recent_cpu / 4) - (nice * 2);
+	t->priority = PRI_MAX - f2i(t->recent_cpu / 4) - (t->nice * 2);
 }
 /* Idle thread.  Executes when no other thread is ready to run.
 
