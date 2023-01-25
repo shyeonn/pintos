@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/arithmetic.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -128,15 +129,18 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 	if(thread_mlfqs == true){
+		thread_current()->recent_cpu += (1<<14);
+
 		if(ticks % TIMER_FREQ == 0){
-			thread_get_load_avg();
-			thread_get_recent_cpu();
+			calculate_load_avg();
+			calculate_recent_cpu();
 		}
 		if(ticks % 4  == 0){
 			recalculate_priority();
 		}
 	}
-	thread_awake(ticks);
+	if(global_tick <= ticks)
+		thread_awake();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
