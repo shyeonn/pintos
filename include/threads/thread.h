@@ -122,6 +122,8 @@ struct thread {
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+extern int64_t global_tick;
+
 extern int load_avg;
 
 
@@ -155,7 +157,7 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 void thread_sleep (int64_t ticks);
-void thread_awake (int64_t ticks);
+void thread_awake (void);
 
 bool wakeup_tick_less_function(const struct list_elem* a, const struct list_elem* b, 
 							   void *aux UNUSED);
