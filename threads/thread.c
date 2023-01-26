@@ -438,21 +438,69 @@ calculate_load_avg(void){
 						((i2f(1) / 60) * ready_threads);
 }
 
+//Calculate for one thread
+void
+recent_cpu_cal(struct thread *t, int decay){
+	t->recent_cpu = add_x_n(mul_x_y(t->recent_cpu, decay), t->nice);
+}
+
+//Calculate for every thread
 void
 calculate_recent_cpu (void) {
-	int *r = &thread_current()->recent_cpu;
+	struct list_elem *e;
+	struct thread *t;
+	
+	int decay = div_x_y((load_avg * 2), add_x_n((load_avg * 2), 1));
+
+	t = thread_current();
+	recent_cpu_cal(t, decay);
+	for (e = list_begin (&ready_list); e != list_end (&ready_list);
+			e = list_next (e)) {
+		t = list_entry (e, struct thread, elem);
+		recent_cpu_cal(t, decay);
+	}
+	for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
+			e = list_next (e)) {
+		t = list_entry (e, struct thread, elem);
+		recent_cpu_cal(t, decay);
+	}
+}
+
 //	printf("load_avg : %d\n", f2i(load_avg*100));
 //	int decay = div_x_y((load_avg * 2), add_x_n((load_avg * 2), 1));
 //	printf("decay : %d\n", f2i(decay*100));
 	
-	*r = add_x_n(mul_x_y(div_x_y((load_avg * 2), add_x_n((load_avg * 2), 1)), *r), thread_current()->nice);
+
+void
+priority_cal(struct thread *t) {
+	int priority = PRI_MAX - f2i(t->recent_cpu / 4) - (t->nice * 2);
+	if(priority > PRI_MAX)
+		t->priority = PRI_MAX;
+	else if(priority < PRI_MIN)
+		t->priority = PRI_MIN;
+	else
+		t->priority = priority;
 }
+
+
 
 void
 recalculate_priority(void) {
-	struct thread *t = thread_current();
-
-	t->priority = PRI_MAX - f2i(t->recent_cpu / 4) - (t->nice * 2);
+	struct list_elem *e;
+	struct thread *t;
+	
+	t = thread_current();
+	priority_cal(t);
+	for (e = list_begin (&ready_list); e != list_end (&ready_list);
+			e = list_next (e)) {
+		t = list_entry (e, struct thread, elem);
+		priority_cal(t);
+	}
+	for (e = list_begin (&sleep_list); e != list_end (&sleep_list);
+			e = list_next (e)) {
+		t = list_entry (e, struct thread, elem);
+		priority_cal(t);
+	}
 }
 /* Idle thread.  Executes when no other thread is ready to run.
 
