@@ -128,9 +128,12 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 
 	ticks++;
 	thread_tick ();
+	while(global_tick <= ticks)
+		thread_awake();
 	if(thread_mlfqs == true){
+		//Caculate running thread only
 		thread_current()->recent_cpu += (1<<14);
-
+		//Caculate for all thread
 		if(ticks % TIMER_FREQ == 0){
 			calculate_load_avg();
 			calculate_recent_cpu();
@@ -139,8 +142,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 			recalculate_priority();
 		}
 	}
-	if(global_tick <= ticks)
-		thread_awake();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
