@@ -122,6 +122,8 @@ sema_up (struct semaphore *sema) {
 					struct thread, elem));
 	sema->value++;
 	intr_set_level (old_level);
+
+	thread_release_unlock();
 }
 
 static void sema_test_helper (void *sema_);
@@ -263,11 +265,11 @@ lock_release (struct lock *lock) {
 			else
 				lock->holder->priority = holder_priority;
 		}
+
 		if(lock->holder->wait_on_lock != NULL){
 			nested_donation(lock->holder->wait_on_lock, lock->holder->priority);
 		}
 	}
-
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
