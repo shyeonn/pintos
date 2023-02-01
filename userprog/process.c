@@ -22,6 +22,8 @@
 #include "vm/vm.h"
 #endif
 
+#define MAX_ARGV 10
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
@@ -158,12 +160,33 @@ error:
 	thread_exit ();
 }
 
+int parsing_input(char *file_name, char *argv) {
+	int argc = 0;
+	char *token, *save_ptr;
+
+   for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+   token = strtok_r (NULL, " ", &save_ptr)) {
+	   printf("%s\n", token);
+	   argv[argc] = token;
+	   argc++;
+   }
+   return argc;
+}
+
+/*
+void
+argument_stack() {
+}
+*/
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	int argc;
+	
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -176,8 +199,20 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+
+	printf("rsp : %d\n", _if.rsp);
+
+	/* Parsing the input */
+	//argc = parsing_input(file_name, argv);  
+	//printf("argc %d\n", argc);
+	//for(int i = 0 ; i < argc ; i++)
+	//	printf("arg : %s\n", argv[i]);
+
+	/*Stack the argument*/
+//	argument_stack(&_if, argc, argv);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
