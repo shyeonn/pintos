@@ -224,7 +224,7 @@ thread_create (const char *name, int priority,
 	enum intr_level old_level;
 
 	old_level = intr_disable ();
-	if(t->priority > thread_get_priority() && !list_empty(&ready_list)){
+	if(t->priority >= thread_get_priority() && !list_empty(&ready_list)){
 		if(list_entry(list_front(&ready_list), struct thread, elem)->status == THREAD_READY)
 		thread_yield();
 	}
@@ -373,7 +373,7 @@ thread_awake(void){
 
 void
 thread_release_unlock () {
-		if(!list_empty(&ready_list)){
+		if(!list_empty(&ready_list) && !intr_context()){
 			if(list_entry(list_front(&ready_list), struct thread, elem)->priority
 					> thread_get_priority()){
 				thread_yield();

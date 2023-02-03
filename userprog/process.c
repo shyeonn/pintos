@@ -198,7 +198,7 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
-
+	
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
@@ -236,6 +236,8 @@ process_exec (void *f_name) {
  * does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) {
+	
+	for(int i = 0; i < 1000000000; i++);
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
