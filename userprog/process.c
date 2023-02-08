@@ -160,24 +160,59 @@ error:
 	thread_exit ();
 }
 
-int parsing_input(char *file_name, char *argv) {
+int parsing_input(char *file_name, char **argv) {
 	int argc = 0;
 	char *token, *save_ptr;
 
    for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
    token = strtok_r (NULL, " ", &save_ptr)) {
-	   printf("%s\n", token);
 	   argv[argc] = token;
 	   argc++;
    }
    return argc;
 }
 
-/*
-void
-argument_stack() {
+int
+argument_stack(struct intr_frame *_if, int argc, char **argv) {
+	char *addr[argc];
+
+	/* Push the string */
+	for(int i = argc - 1; i >= 0; i--){
+		int size = strlen(argv[i]) + 1; //Add \0 length
+		addr[i] = _if->rsp = _if->rsp - size;
+		if(addr[i] >= USER_STACK)
+			return -1; //If pointer is not valid
+		strlcpy((void*)_if->rsp, argv[i], size);
+	}
+
+	/* Word-align */
+	uint8_t word_align = 0;
+	while(_if->rsp % 8 != 0)
+		memcpy((void*)--_if->rsp, &word_align, sizeof(uint8_t)); 
+
+	/* Push the address of string. argv[argc] is NULL pointer */
+	char *np = (char*)NULL;
+	for(int i = argc; i >= 0; i--){
+		_if->rsp = _if->rsp - sizeof(char *);
+		if(i == argc)
+			memcpy((void*)_if->rsp, &np, sizeof(char*));
+		else
+			memcpy((void*)_if->rsp, &addr[i], sizeof(char*));
+	}			
+	/* %rsi point argv */ 
+	_if->R.rsi = _if->rsp;
+
+	/* Push the fake return address */
+	void(*fake_addr)() = NULL;
+	_if->rsp = _if->rsp - sizeof(fake_addr);
+	memcpy((void*)_if->rsp, &fake_addr, sizeof(fake_addr));
+
+	/* %rdi point argc */
+	_if->R.rdi = argc;
+
+	return 0; //Valid pointer
+
 }
-*/
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
@@ -186,6 +221,8 @@ process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
 	int argc;
+	char **argv; 
+	argv = (char **)malloc(sizeof(char *) * MAX_ARGV);
 	
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -199,20 +236,23 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 	
+	/*Parsing the input */
+	argc = parsing_input(file_name, argv);
+
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (argv[0], &_if);
 
-	printf("rsp : %d\n", _if.rsp);
 
-	/* Parsing the input */
-	//argc = parsing_input(file_name, argv);  
-	//printf("argc %d\n", argc);
-	//for(int i = 0 ; i < argc ; i++)
-	//	printf("arg : %s\n", argv[i]);
+	/* Stack the argument in stack */
+	if(argument_stack(&_if, argc, argv))
+		return -1;
 
-	/*Stack the argument*/
-//	argument_stack(&_if, argc, argv);
+	free(argv);
+	
+	/* For Debugging */
+//	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp ,true); 
+
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
