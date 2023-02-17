@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -106,6 +107,19 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+
+	int exit_status;					/* For sys_exit, it indicate error*/
+	bool is_exit;						/* For sys_wait, change by sys_exit */
+	/* Use if thread is child */
+	struct list_elem c_elem;			
+	struct thread *parent;
+	/* Use if thread is parent */
+	struct list children;
+	struct list_elem child_head;
+	struct list_elem child_tail;
+	/* Use for process_wait() */
+	struct semaphore wait_sema;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -116,6 +130,8 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 };
+
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -167,6 +183,8 @@ bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
 void calculate_load_avg (void);
 void calculate_recent_cpu (void);
 void recalculate_priority (void);
+
+struct thread *find_thread(tid_t tid);
 
 
 
