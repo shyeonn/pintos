@@ -2,19 +2,29 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "filesys/off_t.h"
 #include "list.h"
+#include "stdbool.h"
+#include "string.h"
 #include "threads/interrupt.h"
+#include "threads/mmu.h"
+#include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/loader.h"
+#include "threads/vaddr.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/init.h"
 #include "userprog/process.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void check_address(const uint64_t *addr);
+int add_file_to_fdt(struct file *file);
+
 
 typedef int pid_t;
   
@@ -32,6 +42,7 @@ typedef int pid_t;
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -44,6 +55,7 @@ syscall_init (void) {
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
+
 static void
 sys_halt () {
 	power_off();
@@ -63,39 +75,59 @@ sys_exit (int status) {
 static pid_t 
 sys_fork (const char *thread_name, struct intr_frame *f) {
 	pid_t c_pid; 	
-	struct thread *p_thread;
-	struct thread *c_thread;
 
 	c_pid = process_fork(thread_name, f);
-	p_thread = thread_current();
-	c_thread = find_thread(c_pid);
-
-	//For child
-	c_thread->parent = p_thread;
-
-	//For parent
-	list_push_back(&p_thread->children, &c_thread->c_elem);
-	p_thread->child_head = *list_head(&p_thread->children);
-	p_thread->child_tail = *list_tail(&p_thread->children);
-
 	return c_pid;
 }
 
 static int
 sys_exec (const char *cmd_line, struct intr_frame *f) {
-	if(process_fork(cmd_line, f)){
-		process_exec((void *)cmd_line);	
-	}
-	else
-		printf(("This is parent"));
-	
+	check_address((uint64_t *)cmd_line);
 
-	return -1;
+	int file_size = strlen(cmd_line) + 1;
+	char *fn_copy = palloc_get_page(PAL_ZERO); 
+	if (fn_copy == NULL) {
+		sys_exit(-1);
+	}
+	strlcpy(fn_copy, cmd_line, file_size);
+
+	if(process_exec(fn_copy) == -1) {
+		sys_exit(-1);
+	}
+
+	NOT_REACHED();
+	return 0;
 }
 
 static int
 sys_wait (pid_t pid) {
-	return process_wait(pid);
+	int status;
+	status = process_wait(pid);
+
+	return status;
+}
+
+static bool
+sys_create (const char *file, unsigned initial_size) {
+	check_address((uint64_t *)file);
+	return filesys_create(file, initial_size);
+
+}
+
+static bool
+sys_remove (const char *file) {
+	return filesys_remove(file);
+}
+
+static bool
+sys_open (const char *file) {
+	check_address((uint64_t *)file); 
+
+	struct file *open_file = filesys_open(file);
+
+	add_file_to_fdt(open_file);
+
+
 }
 
 static void
@@ -139,6 +171,11 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_EXEC :
 			f->R.rax = sys_exec((const char *)arg[0], f);
 			break;
+			
+		case SYS_CREATE :
+			f->R.rax = sys_create((const char *)arg[0], (unsigned)arg[1]);
+			break;
+
 
 		case SYS_WRITE :
 			sys_write((int)arg[0], (const void *)arg[1], (unsigned)arg[2]);
@@ -150,3 +187,28 @@ syscall_handler (struct intr_frame *f) {
 }
 
 
+
+void
+check_address(const uint64_t *addr)
+{
+	struct thread *cur = thread_current();
+	if (addr == NULL || !(is_user_vaddr(addr)) || 
+				!pml4_get_page(cur->pml4, addr))
+		sys_exit(-1);
+}
+
+int 
+add_file_to_fdt(struct file *file) {
+	struct thread *cur = thread_current();
+	struct file **fdt = cur->fd_table;
+
+	while (cur->fd_idx < FDCOUNT_LIMIT && fdt[cur->fd_idx]) {
+		cur -> fd_idx ++;
+	}
+
+	if (cur->fd_idx >= FDCOUNT_LIMIT)
+		return -1;
+
+	fdt[cur->fd_idx] = file;
+	return cur->fd_idx;
+}

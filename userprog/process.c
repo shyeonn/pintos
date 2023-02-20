@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "list.h"
 #include "threads/synch.h"
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
@@ -74,7 +75,6 @@ initd (void *f_name) {
 
 	process_init ();
 
-	printf("point1\n");
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
@@ -260,7 +260,6 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	printf("cur : %s\n", thread_current()->name);
 	/* We first kill the current context */
 	process_cleanup ();
 	
@@ -306,24 +305,28 @@ process_exec (void *f_name) {
 int
 process_wait (tid_t child_tid) {
 	struct thread *c_thread = find_thread(child_tid);
-	
+
 	//Check this is valid tid
 	if(NULL == c_thread) 
-		return -1;
-
-	//Check this is my child
-	if(c_thread->parent != thread_current())
 		return -1;
 
 	//Check this process is not called already
 	if(!list_empty(&c_thread->wait_sema.waiters))
 		return -1;
+	
+
+	//Check this is my child
+	if(c_thread->parent != thread_current())
+		return -1;
+
 
 	//Wait until child is exit
 	sema_down(&c_thread->wait_sema);
 
+	//Deallocate its process descriptors
+	list_remove(&c_thread->c_elem);
+
 	//Return exit status
-	printf("fin\n");
 	return c_thread->exit_status; 
 }
 
@@ -332,10 +335,11 @@ void
 process_exit (void) {
 	struct thread *curr = thread_current ();
 
+
 	process_cleanup ();
+
 	sema_up(&curr->wait_sema);
 }
-
 /* Free the current process's resources. */
 static void
 process_cleanup (void) {

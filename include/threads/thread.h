@@ -29,6 +29,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* File discriptor */
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -119,6 +123,11 @@ struct thread {
 	struct list_elem child_tail;
 	/* Use for process_wait() */
 	struct semaphore wait_sema;
+	/* For wait */
+	bool is_wait;
+
+	struct file **fd_table;
+	int fd_idx;
 
 #endif
 #ifdef VM
