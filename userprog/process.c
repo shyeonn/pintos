@@ -138,6 +138,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 }
 #endif
 
+static void
+duplicate_fdt (struct thread *c_thread, struct thread *p_thread) {
+	c_thread->fdt = (struct file **)malloc(sizeof(struct file *) * MAX_FDE);
+	
+	for(int i = 2; i < p_thread->next_fd; i++) {
+		c_thread -> fdt[i] = file_duplicate(p_thread->fdt[i]);
+	}
+	c_thread->next_fd = p_thread->next_fd;
+}
+
 /* A thread function that copies parent's execution context.
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
@@ -176,6 +186,7 @@ __do_fork (int64_t **aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	duplicate_fdt(current, parent);
 
 
 	process_init ();

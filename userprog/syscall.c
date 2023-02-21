@@ -1,10 +1,15 @@
 #include "userprog/syscall.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
+#include "devices/input.h"
+#include "filesys/file.h"
 #include "filesys/off_t.h"
 #include "list.h"
 #include "stdbool.h"
+#include "stddef.h"
+#include "stdio.h"
 #include "string.h"
 #include "threads/interrupt.h"
 #include "threads/mmu.h"
@@ -28,6 +33,8 @@ int add_file_to_fdt(struct file *file);
 
 typedef int pid_t;
   
+/* For filesystem global Lock */
+struct lock filesys_lock;
 
 /* System call.
  *
@@ -54,6 +61,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	lock_init(&filesys_lock);
 }
 
 static void
@@ -114,27 +123,99 @@ sys_create (const char *file, unsigned initial_size) {
 
 }
 
+
+static int
+sys_open (const char *file) {
+	check_address((uint64_t *)file); 
+	int fd; 
+
+	struct file *open_file = filesys_open(file);
+
+	if(open_file == NULL)
+		return -1;
+
+	return add_file_to_fdt(open_file);
+}
+
 static bool
 sys_remove (const char *file) {
 	return filesys_remove(file);
 }
 
-static bool
-sys_open (const char *file) {
-	check_address((uint64_t *)file); 
 
-	struct file *open_file = filesys_open(file);
+static int
+sys_filesize (int fd) {
+	if(thread_current()->next_fd <= fd)
+		return -1;
+	struct file *f = thread_current()->fdt[fd];
+	return file_length(f);
+}
 
-	add_file_to_fdt(open_file);
+static int
+sys_read (int fd, void *buffer, unsigned size) {
+	check_address(buffer);
 
+	if((0 > fd) || (thread_current()->next_fd <= fd)){
+		sys_exit(-1);
+	}
+	//not stdin
+	if(fd){
+		struct file *f = thread_current()->fdt[fd];
+		return file_read(f, buffer, size); 
+	}
+	//is stdin
+	else {
+		int count = 0;
+		uint8_t temp;
+		while((temp = input_getc()) != '\0'){
+			memcpy(buffer, &temp, sizeof(uint8_t));
+			count++;
+		}
+		return count;
+	}
+}
+
+static int
+sys_write (int fd, const void *buffer, unsigned size) {
+	check_address(buffer);
+	if((1 > fd) || (thread_current()->next_fd <= fd))
+		sys_exit(-1);
+
+	if(fd == 1){
+		putbuf(buffer, strlen(buffer));
+		return strlen(buffer);
+	}
+	else{
+		struct file *f = thread_current()->fdt[fd];
+		return file_write(f, buffer, size);
+	}
 
 }
 
 static void
-sys_write (int fd, const void *buffer, unsigned size) {
-	if(fd){
-		printf("%s", (char *)buffer);
-	}
+sys_seek (int fd, unsigned position){
+	if((0 > fd) || (thread_current()->next_fd <= fd))
+		sys_exit(-1);
+	file_seek(thread_current()->fdt[fd], position);
+
+}
+
+static unsigned
+sys_tell (int fd) {
+	if((0 > fd) || (thread_current()->next_fd <= fd))
+		sys_exit(-1);
+	return file_tell(thread_current()->fdt[fd]);
+}
+
+static void
+sys_close (int fd) {
+	if((0 > fd) || (thread_current()->next_fd <= fd))
+		sys_exit(-1);
+
+	struct file *f = thread_current()->fdt[fd];
+
+	if(check_close_once(f))
+		file_close(thread_current()->fdt[fd]);
 
 }
 
@@ -175,15 +256,40 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_CREATE :
 			f->R.rax = sys_create((const char *)arg[0], (unsigned)arg[1]);
 			break;
-
-
-		case SYS_WRITE :
-			sys_write((int)arg[0], (const void *)arg[1], (unsigned)arg[2]);
+			
+		case SYS_OPEN :
+			f->R.rax = sys_open((const char *)arg[0]);
 			break;
 
-	
-	}
+		case SYS_REMOVE :
+			f->R.rax = sys_remove((const char *)arg[0]);
+			break;
 
+		case SYS_FILESIZE :
+			f->R.rax = sys_filesize((int)arg[0]);
+			break;
+	
+		case SYS_READ :
+			f->R.rax = sys_read((int)arg[0], (void *)arg[1], (unsigned)arg[2]);
+			break;
+
+		case SYS_WRITE :
+			f->R.rax = sys_write((int)arg[0], (const void *)arg[1], 
+					(unsigned)arg[2]);
+			break;
+
+		case SYS_SEEK :
+			sys_seek((int)arg[0], (unsigned)arg[1]);
+			break;
+		
+		case SYS_TELL :
+			f->R.rax = sys_tell((int)arg[0]);
+			break;
+
+		case SYS_CLOSE :
+			sys_close((int)arg[0]);
+
+	}
 }
 
 
@@ -200,15 +306,12 @@ check_address(const uint64_t *addr)
 int 
 add_file_to_fdt(struct file *file) {
 	struct thread *cur = thread_current();
-	struct file **fdt = cur->fd_table;
+	struct file **fdt = cur->fdt;
 
-	while (cur->fd_idx < FDCOUNT_LIMIT && fdt[cur->fd_idx]) {
-		cur -> fd_idx ++;
+	while (cur->next_fd == MAX_FDE) {
+		return -1;
 	}
 
-	if (cur->fd_idx >= FDCOUNT_LIMIT)
-		return -1;
-
-	fdt[cur->fd_idx] = file;
-	return cur->fd_idx;
+	fdt[cur->next_fd] = file;
+	return cur->next_fd++;
 }

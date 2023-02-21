@@ -1,5 +1,6 @@
 #include "filesys/file.h"
 #include <debug.h>
+#include <stdbool.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
@@ -158,4 +159,17 @@ off_t
 file_tell (struct file *file) {
 	ASSERT (file != NULL);
 	return file->pos;
+}
+
+void
+close_all_file(struct file **fdt, int next_fd) {
+	for(int i = 2; i < next_fd ; i++) {
+		if(get_deny_write_cnt(fdt[i]->inode) > 0)
+			file_close(fdt[i]);
+	}
+}
+
+bool
+check_close_once(struct file *f) {
+	return get_deny_write_cnt(f->inode) > 0;
 }

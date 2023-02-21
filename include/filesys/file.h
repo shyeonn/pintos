@@ -2,7 +2,7 @@
 #define FILESYS_FILE_H
 
 #include "filesys/off_t.h"
-
+#include <stdbool.h>
 struct inode;
 
 /* Opening and closing files. */
@@ -26,5 +26,8 @@ void file_allow_write (struct file *);
 void file_seek (struct file *, off_t);
 off_t file_tell (struct file *);
 off_t file_length (struct file *);
+
+void close_all_file (struct file **, int);
+bool check_close_once (struct file *);
 
 #endif /* filesys/file.h */

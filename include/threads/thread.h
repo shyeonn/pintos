@@ -29,9 +29,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-/* File discriptor */
-#define FDT_PAGES 3
-#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
+#define MAX_FDE 64
+
 
 /* A kernel thread or user process.
  *
@@ -126,8 +125,9 @@ struct thread {
 	/* For wait */
 	bool is_wait;
 
-	struct file **fd_table;
-	int fd_idx;
+	/* For File Manipulation */
+	struct file **fdt;
+	int next_fd;
 
 #endif
 #ifdef VM

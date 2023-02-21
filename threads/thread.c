@@ -4,11 +4,13 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "filesys/file.h"
 #include "lib/kernel/list.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/arithmetic.h"
@@ -46,6 +48,7 @@ static struct lock tid_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
+
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -216,6 +219,13 @@ thread_create (const char *name, int priority,
 	curr->child_head = *list_head(&curr->children);
 	curr->child_tail = *list_tail(&curr->children);
 
+	/* For File Manipulation */
+	t->fdt = (struct file **)malloc(sizeof(struct file *) * MAX_FDE);
+	if(t->fdt == NULL)
+		return -1;
+	/* fd 0,1 is stdin, stdout */
+	t->next_fd = 2;
+
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -311,6 +321,7 @@ thread_tid (void) {
 	return thread_current ()->tid;
 }
 
+
 /* Deschedules the current thread and destroys it.  Never
    returns to the caller. */
 void
@@ -320,6 +331,11 @@ thread_exit (void) {
 #ifdef USERPROG
 	process_exit ();
 #endif
+	struct file **fdt = thread_current()->fdt;
+	int next_fd = thread_current()->next_fd;
+	
+	close_all_file(fdt, next_fd);	
+	free(fdt);
 
 	intr_disable ();
 	/* Just set our status to dying and schedule another process.
