@@ -70,7 +70,7 @@ sys_halt () {
 	power_off();
 }
 
-static void
+void
 sys_exit (int status) {
 	struct thread *t = thread_current();
 	t->is_exit = true;
@@ -83,6 +83,7 @@ sys_exit (int status) {
 
 static pid_t 
 sys_fork (const char *thread_name, struct intr_frame *f) {
+	check_address((uint64_t *)thread_name);
 	pid_t c_pid; 	
 
 	c_pid = process_fork(thread_name, f);
@@ -128,17 +129,20 @@ static int
 sys_open (const char *file) {
 	check_address((uint64_t *)file); 
 	int fd; 
-
 	struct file *open_file = filesys_open(file);
 
 	if(open_file == NULL)
 		return -1;
+
+	if(!strcmp(file, thread_current()->name))
+		file_deny_write(open_file);
 
 	return add_file_to_fdt(open_file);
 }
 
 static bool
 sys_remove (const char *file) {
+	check_address((uint64_t *)file); 
 	return filesys_remove(file);
 }
 
@@ -290,6 +294,8 @@ syscall_handler (struct intr_frame *f) {
 			sys_close((int)arg[0]);
 
 	}
+
+
 }
 
 
