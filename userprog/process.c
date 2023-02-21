@@ -21,6 +21,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -115,8 +116,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
 	newpage = palloc_get_page(PAL_USER);
-	if(!newpage)
+	if(newpage == NULL) {
+		palloc_free_page(newpage);
 		return false;
+	}
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
@@ -132,6 +135,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -195,10 +199,12 @@ __do_fork (int64_t **aux) {
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	sys_exit(-1);
 }
 
-int parsing_input(char *file_name, char **argv) {
+static int 
+parsing_input(char *file_name, char **argv) {
+
 	int argc = 0;
 	char *token, *save_ptr;
 
@@ -207,10 +213,11 @@ int parsing_input(char *file_name, char **argv) {
 	   argv[argc] = token;
 	   argc++;
    }
+
    return argc;
 }
 
-int
+static int
 argument_stack(struct intr_frame *_if, int argc, char **argv) {
 	char *addr[argc];
 
@@ -282,15 +289,13 @@ process_exec (void *f_name) {
 
 
 	/* Stack the argument in stack */
-	if(argument_stack(&_if, argc, argv))
+	if(argument_stack(&_if, argc, argv)){
+		free(argv);
+		palloc_free_page(file_name);
 		return -1;
+	}
 
-	//printf("name : %s\n", file_name);
 	free(argv);
-	
-	/* For Debugging */
-//	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp ,true); 
-
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -315,7 +320,6 @@ process_exec (void *f_name) {
 int
 process_wait (tid_t child_tid) {
 	struct thread *c_thread = find_thread(child_tid);
-	int exit_status;
 
 	//Check this is valid tid
 	if(NULL == c_thread) 

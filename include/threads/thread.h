@@ -29,7 +29,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-#define MAX_FDE 128
+#define MAX_FDE 64
 
 
 /* A kernel thread or user process.
@@ -129,6 +129,7 @@ struct thread {
 	/* For File Manipulation */
 	struct file **fdt;
 	int next_fd;
+	bool fd_exist[MAX_FDE];
 
 #endif
 #ifdef VM

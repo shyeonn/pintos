@@ -97,11 +97,13 @@ sys_exec (const char *cmd_line) {
 	int file_size = strlen(cmd_line) + 1;
 	char *fn_copy = palloc_get_page(PAL_ZERO); 
 	if (fn_copy == NULL) {
+		palloc_free_page(fn_copy);
 		sys_exit(-1);
 	}
 	strlcpy(fn_copy, cmd_line, file_size);
 
 	if(process_exec(fn_copy) == -1) {
+		palloc_free_page(fn_copy);
 		sys_exit(-1);
 	}
 
@@ -222,17 +224,19 @@ sys_tell (int fd) {
 	return file_tell(thread_current()->fdt[fd]);
 }
 
-static void
+void
 sys_close (int fd) {
 	if((0 > fd) || (thread_current()->next_fd <= fd)){
 		sys_exit(-1);
 	}
+	struct thread *t = thread_current();
+	if(t->fd_exist[fd]){ 
+		t->fd_exist[fd] = false; 
+		struct file *f = t->fdt[fd];
+		file_close(f);
+	}
 
-	struct file *f = thread_current()->fdt[fd];
-
-	if(check_close_once(f))
-		file_close(thread_current()->fdt[fd]);
-
+	
 }
 
 /* The main system call interface */
@@ -331,5 +335,6 @@ add_file_to_fdt(struct file *file) {
 	}
 
 	fdt[cur->next_fd] = file;
+	cur->fd_exist[cur->next_fd] = true;
 	return cur->next_fd++;
 }

@@ -27,7 +27,4 @@ void file_seek (struct file *, off_t);
 off_t file_tell (struct file *);
 off_t file_length (struct file *);
 
-void close_all_file (struct file **, int);
-bool check_close_once (struct file *);
-
 #endif /* filesys/file.h */

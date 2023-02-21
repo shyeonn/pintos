@@ -17,6 +17,7 @@
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 
 #define IDLE_TID 2
@@ -76,6 +77,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static void close_all_file(struct thread *);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -222,10 +224,11 @@ thread_create (const char *name, int priority,
 	/* For File Manipulation */
 	t->fdt = (struct file **)malloc(sizeof(struct file *) * MAX_FDE);
 	if(t->fdt == NULL)
-		return -1;
+		sys_exit(-1);
 	/* fd 0,1 is stdin, stdout */
 	t->next_fd = 2;
-
+	/* copy exist_table */
+	memcpy(t->fd_exist, curr->fd_exist, MAX_FDE);
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -251,6 +254,10 @@ thread_create (const char *name, int priority,
 		thread_yield();
 	}
 	intr_set_level (old_level);
+
+
+	if(t->exit_status == -1)
+		return TID_ERROR;
 
 	return tid;
 }
@@ -334,7 +341,8 @@ thread_exit (void) {
 	struct file **fdt = thread_current()->fdt;
 	int next_fd = thread_current()->next_fd;
 	
-	close_all_file(fdt, next_fd);	
+	
+	close_all_file(thread_current());	
 	free(fdt);
 
 	intr_disable ();
@@ -617,6 +625,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	sema_init(&t->wait_sema, 0);
 	sema_init(&t->exit_sema, 0);
 	t->is_wait = false;
+	memset(t->fd_exist, 0, MAX_FDE);
 #endif
 	
 }
@@ -843,3 +852,14 @@ bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
 
 	return thread_a->priority > thread_b->priority;
 }
+
+static void
+close_all_file(struct thread *t) {
+	for(int i = 2; i < MAX_FDE; i++){
+		if(t->fd_exist[i] == true){
+			sys_close(i);
+		}
+	}
+}
+			
+
