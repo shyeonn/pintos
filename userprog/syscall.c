@@ -91,7 +91,7 @@ sys_fork (const char *thread_name, struct intr_frame *f) {
 }
 
 static int
-sys_exec (const char *cmd_line, struct intr_frame *f) {
+sys_exec (const char *cmd_line) {
 	check_address((uint64_t *)cmd_line);
 
 	int file_size = strlen(cmd_line) + 1;
@@ -129,14 +129,19 @@ static int
 sys_open (const char *file) {
 	check_address((uint64_t *)file); 
 	int fd; 
+	
 	struct file *open_file = filesys_open(file);
 
 	if(open_file == NULL)
 		return -1;
 
+	lock_acquire(&filesys_lock);
+
 	if(!strcmp(file, thread_current()->name))
 		file_deny_write(open_file);
 
+
+	lock_release(&filesys_lock);
 	return add_file_to_fdt(open_file);
 }
 
@@ -162,9 +167,11 @@ sys_read (int fd, void *buffer, unsigned size) {
 	if((0 > fd) || (thread_current()->next_fd <= fd)){
 		sys_exit(-1);
 	}
+	lock_acquire(&filesys_lock);
 	//not stdin
 	if(fd){
 		struct file *f = thread_current()->fdt[fd];
+		lock_release(&filesys_lock);
 		return file_read(f, buffer, size); 
 	}
 	//is stdin
@@ -175,6 +182,7 @@ sys_read (int fd, void *buffer, unsigned size) {
 			memcpy(buffer, &temp, sizeof(uint8_t));
 			count++;
 		}
+		lock_release(&filesys_lock);
 		return count;
 	}
 }
@@ -184,13 +192,16 @@ sys_write (int fd, const void *buffer, unsigned size) {
 	check_address(buffer);
 	if((1 > fd) || (thread_current()->next_fd <= fd))
 		sys_exit(-1);
+	lock_acquire(&filesys_lock);
 
 	if(fd == 1){
 		putbuf(buffer, strlen(buffer));
+		lock_release(&filesys_lock);
 		return strlen(buffer);
 	}
 	else{
 		struct file *f = thread_current()->fdt[fd];
+		lock_release(&filesys_lock);
 		return file_write(f, buffer, size);
 	}
 
@@ -213,8 +224,9 @@ sys_tell (int fd) {
 
 static void
 sys_close (int fd) {
-	if((0 > fd) || (thread_current()->next_fd <= fd))
+	if((0 > fd) || (thread_current()->next_fd <= fd)){
 		sys_exit(-1);
+	}
 
 	struct file *f = thread_current()->fdt[fd];
 
@@ -254,7 +266,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_EXEC :
-			f->R.rax = sys_exec((const char *)arg[0], f);
+			f->R.rax = sys_exec((const char *)arg[0]);
 			break;
 			
 		case SYS_CREATE :

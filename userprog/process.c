@@ -262,7 +262,6 @@ process_exec (void *f_name) {
 	char **argv; 
 	argv = (char **)malloc(sizeof(char *) * MAX_ARGV);
 	
-
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -316,6 +315,7 @@ process_exec (void *f_name) {
 int
 process_wait (tid_t child_tid) {
 	struct thread *c_thread = find_thread(child_tid);
+	int exit_status;
 
 	//Check this is valid tid
 	if(NULL == c_thread) 
@@ -337,6 +337,9 @@ process_wait (tid_t child_tid) {
 	//Deallocate its process descriptors
 	list_remove(&c_thread->c_elem);
 
+
+	sema_up(&c_thread->exit_sema);
+
 	//Return exit status
 	return c_thread->exit_status; 
 }
@@ -350,6 +353,7 @@ process_exit (void) {
 	process_cleanup ();
 
 	sema_up(&curr->wait_sema);
+	sema_down(&curr->exit_sema);
 }
 /* Free the current process's resources. */
 static void

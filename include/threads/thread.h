@@ -29,7 +29,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-#define MAX_FDE 64
+#define MAX_FDE 128
 
 
 /* A kernel thread or user process.
@@ -122,6 +122,7 @@ struct thread {
 	struct list_elem child_tail;
 	/* Use for process_wait() */
 	struct semaphore wait_sema;
+	struct semaphore exit_sema;
 	/* For wait */
 	bool is_wait;
 
