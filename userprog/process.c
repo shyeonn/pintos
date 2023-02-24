@@ -22,6 +22,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "userprog/syscall.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -32,6 +33,8 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (int64_t **);
+static void close_all_file(struct thread *t);
+
 
 /* General process initializer for initd and other process. */
 static void
@@ -142,14 +145,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 }
 #endif
 
-static void
+static int
 duplicate_fdt (struct thread *c_thread, struct thread *p_thread) {
-	c_thread->fdt = (struct file **)malloc(sizeof(struct file *) * MAX_FDE);
+	memcpy(c_thread->fd_exist, p_thread->fd_exist, MAX_FDE);
 	
 	for(int i = 2; i < p_thread->next_fd; i++) {
-		c_thread -> fdt[i] = file_duplicate(p_thread->fdt[i]);
+		if(c_thread->fd_exist[i])
+			c_thread -> fdt[i] = file_duplicate(p_thread->fdt[i]);
 	}
 	c_thread->next_fd = p_thread->next_fd;
+	return 0; 
 }
 
 /* A thread function that copies parent's execution context.
@@ -190,8 +195,8 @@ __do_fork (int64_t **aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	duplicate_fdt(current, parent);
-
+	if(duplicate_fdt(current, parent))
+		goto error;
 
 	process_init ();
 
@@ -199,7 +204,8 @@ __do_fork (int64_t **aux) {
 	if (succ)
 		do_iret (&if_);
 error:
-	sys_exit(-1);
+	current->exit_status = -1;
+	thread_exit();
 }
 
 static int 
@@ -329,18 +335,14 @@ process_wait (tid_t child_tid) {
 	if(!list_empty(&c_thread->wait_sema.waiters))
 		return -1;
 	
-
 	//Check this is my child
 	if(c_thread->parent != thread_current())
 		return -1;
-
-
 	//Wait until child is exit
 	sema_down(&c_thread->wait_sema);
 
 	//Deallocate its process descriptors
 	list_remove(&c_thread->c_elem);
-
 
 	sema_up(&c_thread->exit_sema);
 
@@ -351,13 +353,16 @@ process_wait (tid_t child_tid) {
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
-
-
-	process_cleanup ();
+	struct thread *curr = thread_current();
 
 	sema_up(&curr->wait_sema);
 	sema_down(&curr->exit_sema);
+
+	//Close file and free FDT 
+	close_all_file(curr);	
+	free(curr->fdt);
+	process_cleanup ();
+
 }
 /* Free the current process's resources. */
 static void
@@ -777,3 +782,14 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+static void
+close_all_file(struct thread *t) {
+	for(int i = 2; i < MAX_FDE; i++){
+		if(t->fd_exist[i] == true){
+			sys_close(i);
+		}
+	}
+}
+			
+

@@ -75,8 +75,7 @@ sys_exit (int status) {
 	struct thread *t = thread_current();
 	t->is_exit = true;
 	t->exit_status = status;
-
-	printf("%s: exit(%d)\n", t->name, status);
+	printf("%s: exit(%d)\n", t->name, t->exit_status);
 	thread_exit();
 
 }
@@ -97,13 +96,11 @@ sys_exec (const char *cmd_line) {
 	int file_size = strlen(cmd_line) + 1;
 	char *fn_copy = palloc_get_page(PAL_ZERO); 
 	if (fn_copy == NULL) {
-		palloc_free_page(fn_copy);
 		sys_exit(-1);
 	}
 	strlcpy(fn_copy, cmd_line, file_size);
 
 	if(process_exec(fn_copy) == -1) {
-		palloc_free_page(fn_copy);
 		sys_exit(-1);
 	}
 
@@ -130,10 +127,9 @@ sys_create (const char *file, unsigned initial_size) {
 static int
 sys_open (const char *file) {
 	check_address((uint64_t *)file); 
-	int fd; 
 	
 	struct file *open_file = filesys_open(file);
-
+	
 	if(open_file == NULL)
 		return -1;
 
@@ -142,8 +138,8 @@ sys_open (const char *file) {
 	if(!strcmp(file, thread_current()->name))
 		file_deny_write(open_file);
 
-
 	lock_release(&filesys_lock);
+
 	return add_file_to_fdt(open_file);
 }
 
@@ -235,8 +231,6 @@ sys_close (int fd) {
 		struct file *f = t->fdt[fd];
 		file_close(f);
 	}
-
-	
 }
 
 /* The main system call interface */
@@ -330,7 +324,8 @@ add_file_to_fdt(struct file *file) {
 	struct thread *cur = thread_current();
 	struct file **fdt = cur->fdt;
 
-	while (cur->next_fd == MAX_FDE) {
+	if (cur->next_fd == MAX_FDE) {
+		file_close(file);
 		return -1;
 	}
 

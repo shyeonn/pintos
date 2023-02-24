@@ -227,8 +227,6 @@ thread_create (const char *name, int priority,
 		sys_exit(-1);
 	/* fd 0,1 is stdin, stdout */
 	t->next_fd = 2;
-	/* copy exist_table */
-	memcpy(t->fd_exist, curr->fd_exist, MAX_FDE);
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -250,14 +248,14 @@ thread_create (const char *name, int priority,
 	if(t->priority >= thread_get_priority() && !list_empty(&ready_list)){
 		if(list_entry(list_front(&ready_list), struct thread, elem)->status 
 				== THREAD_READY)
-
 		thread_yield();
 	}
 	intr_set_level (old_level);
 
-
-	if(t->exit_status == -1)
+	if(t->exit_status == -1){
+		process_wait(tid);
 		return TID_ERROR;
+	}
 
 	return tid;
 }
@@ -337,13 +335,9 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	process_exit ();
+	ASSERT (list_empty(&thread_current()->children));
+	ASSERT (list_empty(&thread_current()->donations));
 #endif
-	struct file **fdt = thread_current()->fdt;
-	int next_fd = thread_current()->next_fd;
-	
-	
-	close_all_file(thread_current());	
-	free(fdt);
 
 	intr_disable ();
 	/* Just set our status to dying and schedule another process.
@@ -781,13 +775,14 @@ schedule (void) {
 		   thread. This must happen late so that thread_exit() doesn't
 		   pull out the rug under itself.
 		   We just queuing the page free reqeust here because the page is
-		   currently used bye the stack.
+		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
 		   schedule(). */
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
 			ASSERT (curr != next);
 			list_push_back (&destruction_req, &curr->elem);
 		}
+
 
 		/* Before switching the thread, we first save the information
 		 * of current running. */
@@ -852,14 +847,3 @@ bool priority_gre_function(const struct list_elem* a, const struct list_elem* b,
 
 	return thread_a->priority > thread_b->priority;
 }
-
-static void
-close_all_file(struct thread *t) {
-	for(int i = 2; i < MAX_FDE; i++){
-		if(t->fd_exist[i] == true){
-			sys_close(i);
-		}
-	}
-}
-			
-
