@@ -1,10 +1,13 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
 #include "hash.h"
+#include "stddef.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "vm/anon.h"
+#include "vm/uninit.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
@@ -62,8 +65,24 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		struct page *page = (struct page *)malloc(sizeof(struct page));
+		if(page == NULL)
+			return false;
+
+
+		if(VM_TYPE(type) == VM_ANON){
+			uninit_new(page, upage, init, type, aux, anon_initializer);
+		}
+		else if(VM_TYPE(type) == VM_FILE)
+			uninit_new(page, upage, init, type, aux, NULL);
+
+		page->writable = writable;
 
 		/* TODO: Insert the page into the spt. */
+		if(!spt_insert_page(spt, page))
+			goto err;
+
+		return true;
 	}
 err:
 	return false;
@@ -71,20 +90,22 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
+spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page p;
 	struct hash_elem *e;
 	
 	p.va = va;
 	e = hash_find (&spt->hash_spt, &p.hash_elem);
+	if(e == NULL)
+		return NULL;
 
 	return hash_entry(e, struct page, hash_elem);
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
+spt_insert_page (struct supplemental_page_table *spt,
+		struct page *page) {
 	bool succ = false;
 
 	//check va is not exits in spt
@@ -94,6 +115,7 @@ spt_insert_page (struct supplemental_page_table *spt UNUSED,
 	//insert page in spt
 	if(hash_insert(&spt->hash_spt, &page->hash_elem) == NULL)
 		succ = true;
+	//printf("Insert page 0x%llx\n", page->va);
 
 	return succ;
 }
@@ -153,12 +175,14 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, pg_round_down(addr));
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
+	if(page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
@@ -173,10 +197,10 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
-	if((page = pml4_get_page(thread_current()->pml4, va)) == NULL)
+	if((page = spt_find_page(&thread_current()->spt, va)) == NULL)
 		return false;
 	
 	return vm_do_claim_page (page);
@@ -186,14 +210,13 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-	uint64_t *_pte;
 
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true))
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
 		return false;
 
 	return swap_in (page, frame->kva);
@@ -220,7 +243,8 @@ page_less (const struct hash_elem *a_,
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) { hash_init(&spt->hash_spt, page_hash, page_less, NULL);
+supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) { 
+	hash_init(&spt->hash_spt, page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
