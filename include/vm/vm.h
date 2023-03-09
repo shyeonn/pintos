@@ -37,6 +37,13 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
+struct load_data {
+	struct file *_file;
+	size_t _page_read_bytes;
+	size_t _page_zero_bytes;
+	int user_cnt;
+};
+
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
@@ -49,6 +56,7 @@ struct page {
 	/* Your implementation */
 	struct hash_elem hash_elem;
 	bool writable;
+	struct load_data *load_data;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -89,6 +97,7 @@ struct page_operations {
  * All designs up to you for this. */
 struct supplemental_page_table {
 	struct hash hash_spt;
+	struct thread *t;
 
 };
 

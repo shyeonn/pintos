@@ -6,6 +6,7 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/anon.h"
 #include "vm/uninit.h"
 #include "vm/vm.h"
@@ -69,7 +70,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		if(page == NULL)
 			return false;
 
-
 		if(VM_TYPE(type) == VM_ANON){
 			uninit_new(page, upage, init, type, aux, anon_initializer);
 		}
@@ -77,6 +77,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			uninit_new(page, upage, init, type, aux, NULL);
 
 		page->writable = writable;
+		page->load_data = aux; 
 
 		/* TODO: Insert the page into the spt. */
 		if(!spt_insert_page(spt, page))
@@ -115,7 +116,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 	//insert page in spt
 	if(hash_insert(&spt->hash_spt, &page->hash_elem) == NULL)
 		succ = true;
-	//printf("Insert page 0x%llx\n", page->va);
+	//printf("[%llx]Insert page 0x%llx\n", spt, page->va);
 
 	return succ;
 }
@@ -192,7 +193,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 void
 vm_dealloc_page (struct page *page) {
 	destroy (page);
-	free (page);
 }
 
 /* Claim the page that allocate on VA. */
@@ -207,8 +207,10 @@ vm_claim_page (void *va) {
 }
 
 /* Claim the PAGE and set up the mmu. */
+
+
 static bool
-vm_do_claim_page (struct page *page) {
+vm_do_claim_page_T (struct page *page, struct thread *t) {
 	struct frame *frame = vm_get_frame ();
 
 	/* Set links */
@@ -216,10 +218,16 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
+	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable))
+
 		return false;
 
 	return swap_in (page, frame->kva);
+}
+
+static bool
+vm_do_claim_page (struct page *page) {
+	vm_do_claim_page_T(page, thread_current());
 }
 
 /* For spt_init function */
@@ -245,18 +253,88 @@ page_less (const struct hash_elem *a_,
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) { 
 	hash_init(&spt->hash_spt, page_hash, page_less, NULL);
+	spt->t = thread_current();
+}
+
+static bool
+claim_copy_page (struct page *p, struct thread *t) {
+	struct frame *frame = vm_get_frame ();
+
+	/* Set links */
+	frame->page = p;
+	p->frame = frame;
+
+	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	if(!pml4_set_page(t->pml4, p->va, frame->kva, p->writable)) {
+		return false;
+		printf("vm.c:270\n");
+	}
+
+	return true;
 }
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
 
+	struct hash_iterator i;
+
+	hash_first (&i, &src->hash_spt);
+	while (hash_next (&i)) {
+			struct page *p = hash_entry (hash_cur (&i), struct page, hash_elem);
+			struct page *new_p = (struct page *)malloc(sizeof(struct page));
+			if(new_p == NULL)
+				return false;
+
+			memcpy(new_p, p, sizeof(struct page));
+			//If stack is not Initial stack)
+			if(!(new_p->uninit.type & VM_MARKER_0))
+				p->load_data->user_cnt++;
+
+			//If Not loaded
+			if(pml4_get_page(src->t->pml4, p->va) == NULL){
+			}
+			//Loaded
+			else {
+				if(!claim_copy_page(new_p, dst->t)){
+					free(new_p);
+					return false;
+				}
+				memcpy(new_p->frame->kva, p->frame->kva, PGSIZE);
+			}
+
+			if(!spt_insert_page(dst, new_p)){
+				free(new_p);
+				return false;
+			}
+	}
+	return true;
 }
+
+static void
+spt_free_page(struct hash_elem *e, void *aux UNUSED) {
+	
+	 struct page *p = hash_entry(e, struct page, hash_elem);
+
+	 //printf("Free page 0x%llx\n", p->va);
+	 vm_dealloc_page(p);
+}
+
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	struct hash_iterator i;
+
+	hash_first (&i, &spt->hash_spt);
+	while (hash_next (&i)) {
+			struct hash_elem *h = hash_cur (&i);
+			spt_free_page(h, NULL);
+			hash_delete(&spt->hash_spt, h);
+	}
+
 }
+

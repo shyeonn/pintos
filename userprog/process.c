@@ -722,17 +722,13 @@ install_page (void *upage, void *kpage, bool writable) {
 /* From here, codes will be used after project 3.
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
-struct load_data {
-	struct file *_file;
-	size_t _page_read_bytes;
-	size_t _page_zero_bytes;
-};
 
 static bool
 lazy_load_segment (struct page *page, struct load_data *ld) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+		off_t pos = file_tell(ld->_file);
 
 		/* Load this page. */
 		if (file_read (ld->_file, page->va, ld->_page_read_bytes) 
@@ -740,8 +736,9 @@ lazy_load_segment (struct page *page, struct load_data *ld) {
 			return false;
 		}
 		memset (page->va + ld->_page_read_bytes, 0, ld->_page_zero_bytes);
-		free(ld);
-//		printf("Lazy_load 0x%llx\n", page->va);
+		//page position reset for copy in later
+		file_seek(ld->_file, pos);
+		//printf("Lazy_load 0x%llx\n", page->va);
 
 		/* Set Dirty bits to false */
 		pml4_set_dirty(thread_current()->pml4, page->va, false);
@@ -779,11 +776,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		struct load_data *ld = (struct load_data *)malloc(sizeof(struct load_data));
+		struct load_data *ld = 
+			(struct load_data *)malloc(sizeof(struct load_data));
 
 		ld->_file = file_duplicate(file);
 		ld->_page_read_bytes = page_read_bytes;
 		ld->_page_zero_bytes = page_zero_bytes;
+		ld->user_cnt = 1;
+		
 		file_seek (file, ofs = ofs+page_read_bytes);
 
 

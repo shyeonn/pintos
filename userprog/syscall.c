@@ -308,7 +308,19 @@ syscall_handler (struct intr_frame *f) {
 
 }
 
+#ifndef VM
 
+void
+check_address(const uint64_t *addr)
+{
+	struct thread *cur = thread_current();
+
+	if (addr == NULL || !(is_user_vaddr(addr)) || 
+				!pml4_get_page(cur->pml4, addr))
+		sys_exit(-1);
+}
+
+#else
 
 void
 check_address(const uint64_t *addr)
@@ -321,6 +333,9 @@ check_address(const uint64_t *addr)
 			sys_exit(-1);
 	}
 }
+
+#endif
+
 
 int 
 add_file_to_fdt(struct file *file) {
