@@ -44,6 +44,12 @@ struct load_data {
 	int user_cnt;
 };
 
+struct file_backed_data {
+	struct file *file;
+	off_t new_offset;
+	size_t read_bytes;
+};
+
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
@@ -56,7 +62,10 @@ struct page {
 	/* Your implementation */
 	struct hash_elem hash_elem;
 	bool writable;
+	//use for ANON
 	struct load_data *load_data;
+	//use for FILE
+	struct file_backed_data *file_data;
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */

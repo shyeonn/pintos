@@ -6,6 +6,7 @@
 #include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#include "lib/syscall-nr.h"
 #include "list.h"
 #include "stdbool.h"
 #include "stddef.h"
@@ -24,6 +25,8 @@
 #include "threads/init.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
+#include "vm/file.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -162,6 +165,13 @@ static int
 sys_read (int fd, void *buffer, unsigned size) {
 	check_address(buffer);
 
+	struct page *p = spt_find_page(&thread_current()->spt, 
+			pg_round_down(buffer)); 
+	if(p->va != NULL && !p->writable)
+		sys_exit(-1);
+	
+
+
 	if((0 > fd) || (thread_current()->next_fd <= fd)){
 		sys_exit(-1);
 	}
@@ -233,10 +243,47 @@ sys_close (int fd) {
 	}
 }
 
+void *
+sys_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+	struct thread *t;
+	struct file *f;
+	void *va;
+
+	t = thread_current();
+	lock_acquire(&filesys_lock);
+
+	if(!((fd >= 2) || (fd < MAX_FDE)) && !(t->fd_exist[fd])
+		&& !((int)addr % PGSIZE) && (addr == NULL)){
+
+		lock_release(&filesys_lock);
+		sys_exit(-1);
+	}
+	else{
+		//get file through fd
+		f = t->fdt[fd];
+
+		//check file length 
+		if(file_length(f) == 0) {
+			lock_release(&filesys_lock);
+			return NULL;
+		}
+		va = do_mmap(addr, length, writable, f, offset);	
+		lock_release(&filesys_lock);
+	//	printf("va 0x%llx\n", va);
+	}
+
+	return va;
+}
+
+void
+sys_munmap (void *addr) {
+	do_munmap(addr);
+}
+
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
-	/* Save argument. !! We should implement check valid pointer!! */
+	// Save argument. 
 	uint64_t arg[6];
 	arg[0] = f->R.rdi;
 	arg[1] = f->R.rsi;
@@ -302,6 +349,16 @@ syscall_handler (struct intr_frame *f) {
 
 		case SYS_CLOSE :
 			sys_close((int)arg[0]);
+			break;
+
+		case SYS_MMAP :
+			f->R.rax = sys_mmap((void *)arg[0], (size_t) arg[1], (int)arg[2], 
+					(int) arg[3], (off_t) arg[4]);
+			break;
+
+		case SYS_MUNMAP : 
+			sys_munmap((void *)arg[0]);
+			break;
 
 	}
 
@@ -326,12 +383,15 @@ void
 check_address(const uint64_t *addr)
 {
 	struct thread *cur = thread_current();
+	struct page *p = spt_find_page(&cur->spt, pg_round_down(addr)); 
 
-	if(spt_find_page(&cur->spt, pg_round_down(addr)) == NULL) {
+	if(p == NULL) {
 		if (addr == NULL || !(is_user_vaddr(addr)) || 
 					!pml4_get_page(cur->pml4, addr))
 			sys_exit(-1);
 	}
+//	else if(p->va != NULL && !p->writable)
+//		sys_exit(-1);
 }
 
 #endif

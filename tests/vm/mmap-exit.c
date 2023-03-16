@@ -12,7 +12,7 @@ test_main (void)
   pid_t child;
 
   /* Make child write file. */
-  quiet = true;
+  quiet = false;
 	child = fork("child-mm-wrt");
 	if (child == 0) {
 		CHECK ((child = exec ("child-mm-wrt")) != -1, "exec \"child-mm-wrt\"");

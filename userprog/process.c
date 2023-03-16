@@ -193,7 +193,7 @@ __do_fork (int64_t **aux) {
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
-	 * TODO:       from the fork() until this function successfully duplicates
+	 * TDO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 	if(duplicate_fdt(current, parent))
 		goto error;
@@ -816,6 +816,7 @@ setup_stack (struct intr_frame *if_) {
 			if(!vm_claim_page(stack_bottom))
 				return false;
 			if_->rsp = USER_STACK;
+			thread_current()->stack_bottom = stack_bottom;
 		}
 	}
 

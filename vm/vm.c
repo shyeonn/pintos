@@ -8,6 +8,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/anon.h"
+#include "vm/file.h"
 #include "vm/uninit.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
@@ -16,6 +17,7 @@
 #include "threads/mmu.h"
 #include <stdint.h>
 
+#define MAX_STACK_SIZE 0x100000
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -72,12 +74,14 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 
 		if(VM_TYPE(type) == VM_ANON){
 			uninit_new(page, upage, init, type, aux, anon_initializer);
+			page->load_data = aux; 
 		}
-		else if(VM_TYPE(type) == VM_FILE)
-			uninit_new(page, upage, init, type, aux, NULL);
+		else if(VM_TYPE(type) == VM_FILE){
+			uninit_new(page, upage, init, type, aux, file_backed_initializer);
+			page->file_data = aux; 
+		}
 
 		page->writable = writable;
-		page->load_data = aux; 
 
 		/* TODO: Insert the page into the spt. */
 		if(!spt_insert_page(spt, page))
@@ -116,7 +120,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 	//insert page in spt
 	if(hash_insert(&spt->hash_spt, &page->hash_elem) == NULL)
 		succ = true;
-	//printf("[%llx]Insert page 0x%llx\n", spt, page->va);
+//	printf("[%llx]Insert page 0x%llx\n", spt, page->va);
 
 	return succ;
 }
@@ -165,8 +169,28 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+static bool
+vm_stack_growth (void *addr, bool write) {
+	struct thread *t = thread_current();
+
+	while(t->stack_bottom > addr) {
+		t->stack_bottom -= PGSIZE;	
+		
+		if(vm_alloc_page(VM_ANON | VM_MARKER_0, t->stack_bottom, write)) {
+			if(vm_claim_page(t->stack_bottom)) {
+	//			printf("Growth stack : 0x%llx\n", t->stack_bottom); 
+			}
+			else
+				return false;
+		}
+		else 
+			return false;
+		//printf("stack_end : %llx\n", stack_end);
+		//printf("addr : %llx\n", addr);
+		//printf("rsp : %llx\n", rsp);
+
+	}
+	return true;
 }
 
 /* Handle the fault on write_protected page */
@@ -176,15 +200,33 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+vm_try_handle_fault (struct intr_frame *f , void *addr,
+		bool user , bool write , bool not_present UNUSED) {
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = spt_find_page(spt, pg_round_down(addr));
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-	if(page == NULL)
+	uintptr_t rsp;
+
+
+	if(page == NULL) {
+		if(user)
+			rsp = f->rsp;
+		else
+			rsp = thread_current()->rsp;
+
+		if(write && (addr < rsp) && (addr >= (USER_STACK - MAX_STACK_SIZE))) {
+			//printf("rsp : 0x%llx \n",rsp);
+			//printf("addr : 0x%llx\n", addr);
+			return vm_stack_growth(addr, write);
+		}
+		else
+			return false;
+	}
+	else if(page->frame != NULL)
 		return false;
 
+	//Not loaded page
 	return vm_do_claim_page (page);
 }
 
@@ -319,6 +361,7 @@ spt_free_page(struct hash_elem *e, void *aux UNUSED) {
 
 	 //printf("Free page 0x%llx\n", p->va);
 	 vm_dealloc_page(p);
+//	 free(p);
 }
 
 
